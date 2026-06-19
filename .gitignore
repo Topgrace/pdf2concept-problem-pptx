@@ -1,0 +1,10 @@
+.generated/
+기대결과/
+
+*.pdf
+*.pptx
+
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
