@@ -127,6 +127,44 @@ def is_reference_blank_shape(element: ET.Element) -> bool:
     return 0.35 <= width <= 1.15 and 0.25 <= height <= 0.75
 
 
+def shape_fill(element: ET.Element) -> str | None:
+    srgb = element.find("./p:spPr/a:solidFill/a:srgbClr", NS)
+    if srgb is not None:
+        return srgb.get("val")
+    scheme = element.find("./p:spPr/a:solidFill/a:schemeClr", NS)
+    if scheme is not None:
+        return scheme.get("val")
+    return None
+
+
+def is_slide_local_background_or_panel(element: ET.Element, slide_width: float, slide_height: float) -> bool:
+    if clean(shape_text(element)):
+        return False
+    bounds = object_bounds(element, "sp")
+    if bounds is None:
+        return False
+    x, y, width, height = bounds
+    fill = shape_fill(element)
+    geometry = shape_geometry(element)
+    if (
+        geometry == "rect"
+        and fill in {"CCDEED", "CCDEF0", "bg1"}
+        and abs(x) <= 0.03
+        and abs(y) <= 0.03
+        and width >= slide_width - 0.05
+        and height >= slide_height - 0.05
+    ):
+        return True
+    return (
+        geometry == "roundRect"
+        and fill in {"FFFFFF", "bg1"}
+        and x <= 0.40
+        and 0.20 <= y <= 0.75
+        and width >= 8.50
+        and height >= 6.00
+    )
+
+
 def inspect_slide(root: ET.Element, number: int, slide_width: float, slide_height: float) -> dict:
     off_slide_objects = []
     outside_canvas_objects = []
@@ -180,12 +218,14 @@ def inspect_slide(root: ET.Element, number: int, slide_width: float, slide_heigh
                     "name": c_nv_pr.get("name"),
                     "text": clean(shape_text(element)),
                     "on_slide": on_slide,
+                    "hidden": c_nv_pr.get("hidden"),
                 }
 
     set_targets = []
     off_slide_set_targets = []
     missing_targets = []
     non_group_targets = []
+    hidden_set_targets = []
     for node in root.findall(".//p:set", NS):
         target = node.find(".//p:spTgt", NS)
         target_id = target.get("spid") if target is not None else None
@@ -204,6 +244,7 @@ def inspect_slide(root: ET.Element, number: int, slide_width: float, slide_heigh
                 "target_id": target_id,
                 "kind": target_info["kind"] if target_info else None,
                 "text": target_info["text"][:80] if target_info and target_info["text"] else "",
+                "hidden": target_info["hidden"] if target_info else None,
             }
         )
         if target_id and target_id not in objects_by_id:
@@ -216,6 +257,15 @@ def inspect_slide(root: ET.Element, number: int, slide_width: float, slide_heigh
                     "text": target_info["text"][:80],
                 }
             )
+        elif target_id and target_info and target_info["hidden"]:
+            hidden_set_targets.append(
+                {
+                    "target_id": target_id,
+                    "kind": target_info["kind"],
+                    "text": target_info["text"][:80],
+                    "hidden": target_info["hidden"],
+                }
+            )
 
     blank_shapes = [
         {
@@ -225,6 +275,22 @@ def inspect_slide(root: ET.Element, number: int, slide_width: float, slide_heigh
         for element in root.findall(".//p:sp", NS)
         if intersects_slide(element, "sp", slide_width, slide_height) and is_reference_blank_shape(element)
     ]
+
+    local_background_overlays = []
+    for element in root.findall(".//p:sp", NS):
+        if not is_slide_local_background_or_panel(element, slide_width, slide_height):
+            continue
+        c_nv_pr = direct_cnvpr(element, "sp")
+        bounds = object_bounds(element, "sp")
+        local_background_overlays.append(
+            {
+                "id": c_nv_pr.get("id") if c_nv_pr is not None else None,
+                "name": c_nv_pr.get("name") if c_nv_pr is not None else None,
+                "geometry": shape_geometry(element),
+                "fill": shape_fill(element),
+                "bounds": [round(value, 3) for value in bounds] if bounds else None,
+            }
+        )
 
     literal_square_count = sum(text.count("□") for text in text_nodes)
     visible_page_labels = [
@@ -243,12 +309,15 @@ def inspect_slide(root: ET.Element, number: int, slide_width: float, slide_heigh
         "off_slide_set_targets": off_slide_set_targets,
         "missing_timing_targets": missing_targets,
         "non_group_set_targets": non_group_targets,
+        "hidden_set_targets": hidden_set_targets,
         "blank_shape_count": 0 if is_title_slide else len(blank_shapes),
         "blank_shapes": [] if is_title_slide else blank_shapes[:20],
         "off_slide_object_count": len(off_slide_objects),
         "off_slide_objects": off_slide_objects[:20],
         "outside_canvas_object_count": len(outside_canvas_objects),
         "outside_canvas_objects": outside_canvas_objects[:20],
+        "local_background_overlay_count": len(local_background_overlays),
+        "local_background_overlays": local_background_overlays[:20],
         "sample_text": combined_text[:140],
     }
 
@@ -299,6 +368,7 @@ def validate(report: dict, args: argparse.Namespace) -> dict:
     total_off_slide_objects = sum(slide["off_slide_object_count"] for slide in report["slides"])
     total_outside_canvas_objects = sum(slide["outside_canvas_object_count"] for slide in report["slides"])
     total_visible_page_labels = sum(len(slide["visible_page_labels"]) for slide in report["slides"])
+    total_local_background_overlays = sum(slide["local_background_overlay_count"] for slide in report["slides"])
 
     if total_literal_squares:
         failures.append(
@@ -360,6 +430,23 @@ def validate(report: dict, args: argparse.Namespace) -> dict:
                 }
             )
 
+    hidden_target_slides = [
+        {
+            "slide": slide["slide"],
+            "hidden_set_targets": slide["hidden_set_targets"],
+        }
+        for slide in report["slides"]
+        if slide["hidden_set_targets"]
+    ]
+    if hidden_target_slides:
+        failures.append(
+            {
+                "rule": "set_targets_not_hidden",
+                "message": "Animated p:set targets must not have cNvPr hidden=1; PowerPoint may skip hidden targets during slideshow clicks.",
+                "slides": hidden_target_slides,
+            }
+        )
+
     if args.require_blank_shapes and total_problem_blank_shapes == 0:
         failures.append(
             {
@@ -400,6 +487,22 @@ def validate(report: dict, args: argparse.Namespace) -> dict:
             }
         )
 
+    if total_local_background_overlays:
+        failures.append(
+            {
+                "rule": "forbid_slide_local_background_overlays",
+                "message": "Use the bundled master/layout background and panel; do not create slide-local full-canvas backgrounds or large content panels.",
+                "slides": [
+                    {
+                        "slide": slide["slide"],
+                        "local_background_overlays": slide["local_background_overlays"],
+                    }
+                    for slide in report["slides"]
+                    if slide["local_background_overlay_count"]
+                ],
+            }
+        )
+
     report["summary"] = {
         "total_set_animations": total_sets,
         "total_off_slide_set_animations_ignored": total_off_slide_sets,
@@ -408,6 +511,7 @@ def validate(report: dict, args: argparse.Namespace) -> dict:
         "total_off_slide_objects_ignored": total_off_slide_objects,
         "total_outside_canvas_objects": total_outside_canvas_objects,
         "total_visible_page_labels": total_visible_page_labels,
+        "total_local_background_overlays": total_local_background_overlays,
     }
     report["failures"] = failures
     report["passes"] = not failures

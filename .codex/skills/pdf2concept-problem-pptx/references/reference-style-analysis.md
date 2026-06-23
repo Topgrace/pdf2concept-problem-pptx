@@ -22,7 +22,7 @@ The original sample conversion scope was PDF pages 62-79, which became a 22-slid
 ## Slide Size And Theme
 
 - Use 16:9 widescreen: `12192000 x 6858000 EMU`, equal to `13.333in x 7.5in`.
-- Reuse the reference PPTX theme and masters instead of creating a blank deck.
+- Use extracted theme/master measurements or embedded style-only assets instead of reading or copying a raw reference PPTX at runtime.
 - Main Korean font: `나눔스퀘어라운드 ExtraBold`.
 - Main math font: `BT수식M`.
 - Theme fallback includes `맑은 고딕`.
@@ -87,12 +87,13 @@ The original sample conversion scope was PDF pages 62-79, which became a 22-slid
 ## Construction Guidance
 
 - Use these notes as measured style guidance, not as instructions to load a bundled template.
-- Start from a user-provided reference PPTX only when the user explicitly supplies one for a non-deterministic conversion.
+- If a user supplies an external deck for calibration, extract reusable measurements from it and fold those values into the design map; do not make normal generation depend on that deck file.
 - Duplicate the closest matching slide type: title, two-column item grid, number-line/image item, transformation step, or long word-problem step.
 - Replace text while preserving each shape's geometry, run-level fonts, and animation grouping.
 - Before finalizing, compare the generated problem slide against the rendered source PDF block for row order, column count, answer-column alignment, and inline blank positions. Rebuild the slide if a source vertical list became a cramped two-column layout or if a square blank moved away from its formula anchor.
 - For source math that extracts poorly, manually reconstruct formulas with `BT수식M`, baseline positioning, stacked fractions with horizontal fraction bars, small text boxes for numerators/denominators, and the same blank boxes/circles/arrows used in the reference deck.
 - Do not use full-page PDF screenshots or cropped `개념 익히기` blocks as the main slide body unless the user explicitly requests image-only slides.
 - Render or visually inspect the final PPTX before delivery. Check text overlap, clipping, visible page labels, and unnecessary square blank boxes; fix problems and provide only the corrected final deck.
-- After generating a deck, run `../scripts/validate_editable_deck.py`. A deck like `.generated/pdf2concept-10-27/중등수학_2-1_10-27_개념익히기.pptx`, where problem slides are only large crop images, should be treated as failed output and rebuilt.
-- Also run `../scripts/validate_reference_pattern.py --require-animations --require-group-animation --forbid-visible-page-labels --forbid-off-slide-objects`. Add `--require-blank-shapes` only when the generated problems include actual source PDF square blanks. On-slide square blanks typed as `□`, reveal targets that are loose text boxes, visible page labels, and any unrelated object outside the slide canvas should be treated as failed output and rebuilt.
+- Prefer the standard build runner `../scripts/build_concept_practice_deck.py`, which writes the generation report and runs generation-report, editable-deck, OOXML-style, and reference-pattern validation in one pass.
+- If validating manually, run `../scripts/validate_generation_report.py`, `../scripts/validate_editable_deck.py`, `../scripts/validate_ooxml_style_parts.py`, and `../scripts/validate_reference_pattern.py --require-animations --require-group-animation --forbid-visible-page-labels --forbid-off-slide-objects`. Add `--require-blank-shapes` only when the generated problems include actual source PDF square blanks.
+- A deck like `.generated/pdf2concept-10-27/중등수학_2-1_10-27_개념익히기.pptx`, where problem slides are only large crop images, should be treated as failed output and rebuilt. On-slide square blanks typed as `□`, reveal targets that are loose text boxes, visible page labels, and any unrelated object outside the slide canvas should also be treated as failed output.

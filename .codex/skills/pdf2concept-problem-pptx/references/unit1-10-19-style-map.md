@@ -1,15 +1,15 @@
-# Unit 1 Pages 10-19 Independent Style Map
+# Unit 1 Pages 10-19 Embedded Style Map
 
-Use this reference when generating the deterministic 10-19 deck for the verified middle-school math PDF. The runtime generator must not read `중2-1-1단원 개념익히기_참고용.pptx`; this file records the measured pattern from that human-made deck.
+Use this reference when maintaining the embedded 10-19 style/content plan inside `../scripts/generate_concept_practice_deck.py` for the verified middle-school math PDF. The runtime generator must not read `중2-1-1단원 개념익히기_참고용.pptx`; this file records the measured pattern from that human-made deck.
 
 ## Runtime Assets
 
-The bundled runtime assets are in `../assets/unit1-10-19/`. The runtime generator must not read the reference PPTX, but it must use these measured assets and style parts so the output keeps the same theme, masters, layouts, and visible decorations.
+The measured runtime assets are in `../assets/concept-practice-style/`. They are shared concept-practice style assets used by general page-range generation and by the embedded 10-19 style plan. The runtime generator must not read the reference PPTX.
 
 - `title-character.png`: title-slide character decoration, displayed at `w=1.529in, h=1.578in`.
 - `header-concept-practice-1.png`: concept-practice header for `개념 익히기 1`, displayed at `x=0.283in, y=0.528in, w=1.937in, h=0.463in`.
 - `header-concept-practice-2.png`: concept-practice header for `개념 익히기 2`, displayed at `x=0.283in, y=0.528in, w=1.936in, h=0.464in`.
-- `assets-manifest.json`: file size, pixel dimensions, and SHA-256 for the three PNG assets.
+- `assets-manifest.json`: file size, pixel dimensions, and SHA-256 for PNG assets plus the presentation metadata file.
 - `presentation-metadata.xml`: stripped `ppt/presentation.xml` metadata from the human-made deck, with embedded-font references removed. This supplies PowerPoint-compatible default text style and slide/master IDs without requiring runtime access to the reference PPTX.
 - `ooxml-style-parts/`: extracted style-only OOXML from the human-made reference deck.
   - `ppt/theme/theme1.xml` and `ppt/theme/theme2.xml`.
@@ -47,7 +47,8 @@ Exclude pages 12, 13, 16, and 17 because they are `개념 다지기` or `개념 
   - Slide 1: `x=9.143in`.
   - Slide 6: `x=11.592in`.
   - Slide 11: `x=11.343in`.
-- Problem prompt starts at `x=0.224in, y=0.993in`; use `0.68in` height for short prompts and about `1.18in` for long prompts.
+- Problem prompt starts at `x=0.224in, y=0.993in`; use `w=9.559in`, `h=1.254in` for short prompts, and about `h=1.860in` for long prompts. Prompt text uses `나눔스퀘어라운드 ExtraBold`, `sz=2400` (`24pt`), and paragraph line spacing `spcPct=150000` (`150%`). Generated prompts should apply word-boundary wrapping when explicit wrapping is needed, so Korean words and Latin/math tokens are not split in the middle.
+- First subproblem placement is measured from the prompt textbox bottom. Short prompts have bottom `2.247in` and first problem-number y about `2.749in`; long prompts have bottom `2.853in` and first problem-number y about `3.371in`. Use `problem_slide.item.prompt_gap` around `0.502in` for short prompts and `problem_slide.item.long_prompt_gap` around `0.518in` for long prompts instead of a fixed first-row y that ignores prompt height.
 - Fonts:
   - Korean prompt/title/problem numbers: `나눔스퀘어라운드 ExtraBold`.
   - Cover slide large numbers: `나눔스퀘어 ExtraBold`.
@@ -104,12 +105,12 @@ Exclude pages 12, 13, 16, and 17 because they are `개념 다지기` or `개념 
 - Timing target groups include problem number, expression/fraction/blank shapes, answer parentheses, and helper text for that item.
 - Generated slides must not contain page labels or any object outside the slide canvas.
 
-## Deterministic Generator
+## Runtime Generator
 
-Run `../scripts/generate_unit1_10_19.py` for this exact case:
+Run the standard build runner for this exact case:
 
 ```bash
-python ../scripts/generate_unit1_10_19.py --pdf <input.pdf> --output <output.pptx> --report <report.json>
+python ../scripts/build_concept_practice_deck.py --pdf <input.pdf> --pages 10-19 --output <output.pptx> --report-dir <report-dir>
 ```
 
-The generator verifies the input PDF size and SHA-256, writes a 12-slide editable PPTX directly as OOXML, embeds the three bundled PNG assets plus bundled presentation metadata and style OOXML parts, and records `runtime_reference_pptx_used: false` in the report. A valid output must open in Microsoft PowerPoint and export slides 7 and 8 to PNG without repair prompts or corruption errors.
+The build runner calls the generic generator, which verifies the input PDF SHA-256, switches to `generation_mode: unit1_10_19_embedded_style_plan`, writes a 12-slide editable PPTX, injects the bundled theme/master/layout OOXML parts, and redirects generated slides to the bundled blank layout. The runner then writes the standard report files and requires generation-report, editable-deck, OOXML-style, and reference-pattern validation to pass. A valid output should also open in Microsoft PowerPoint and export slides 7 and 8 to PNG without repair prompts or corruption errors when PowerPoint is available.
